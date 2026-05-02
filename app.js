@@ -1,10 +1,11 @@
 // =========================================================================
 // PENTING: Ganti URL di bawah dengan URL Web App Google Apps Script Anda!
 // =========================================================================
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRdI6b9gOMA36Oq6hRWqkwkmSMlnmbtr9lOLFJtp_FDk0mYHegP0UIMbNG6Uvx3CDh_Q/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxsJA7JUB7IAQeJHD2ymHmZeySqhp6mMQr6tHDGYTOyT0YyI9bENdNk5KuA_AbnUx44CA/exec';
 
 // Initial state and DOM elements
 let transactions = [];
+let reminders = [];
 let masterOutputs = [];
 let masterMethods = [];
 let masterSources = [];
@@ -365,6 +366,7 @@ const requestNotificationPermission = async () => {
 
 // Initialize app
 const init = async () => {
+    switchTab('dashboard');
     setTodayDate();
     resetDescriptionItems();
 
@@ -430,6 +432,7 @@ const fetchTransactions = async () => {
             transactions = data;
         } else {
             transactions = data.transactions || [];
+            reminders = data.reminders || [];
             masterOutputs = data.masterOutputs || [];
             masterMethods = data.masterMethods || [];
             masterSources = data.masterSources || [];
@@ -453,11 +456,14 @@ const updateUI = () => {
     updateSummary();
     renderDashboard();
     renderTransactions();
+    renderAssetSummary();
+    renderHutangPiutang();
 };
 
 // Calculate and update summary cards
 const updateSummary = () => {
-    const amounts = transactions.map(t => t.type === 'income' ? t.amount : -t.amount);
+    const financialTransactions = transactions.filter(t => t.output !== '[PENGINGAT]');
+    const amounts = financialTransactions.map(t => t.type === 'income' ? t.amount : -t.amount);
 
     const total = amounts.reduce((acc, item) => (acc += item), 0);
     const income = amounts.filter(item => item > 0).reduce((acc, item) => (acc += item), 0);
@@ -472,6 +478,221 @@ const updateSummary = () => {
     } else {
         balanceEl.style.color = 'inherit';
     }
+};
+
+// Render Asset Summary
+const renderAssetSummary = () => {
+    const container = document.getElementById('asset-cards-container');
+    if (!container) return;
+
+    // Group by paymentMethod
+    const assetSummary = {};
+
+    transactions.filter(t => t.output !== '[PENGINGAT]').forEach(t => {
+        const method = t.paymentMethod || 'Lainnya';
+        if (!assetSummary[method]) {
+            assetSummary[method] = {
+                income: 0,
+                expense: 0,
+                balance: 0
+            };
+        }
+
+        if (t.type === 'income') {
+            assetSummary[method].income += t.amount;
+            assetSummary[method].balance += t.amount;
+        } else if (t.type === 'expense') {
+            assetSummary[method].expense += t.amount;
+            assetSummary[method].balance -= t.amount;
+        }
+    });
+
+    container.innerHTML = '';
+
+    if (Object.keys(assetSummary).length === 0) {
+        container.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;"><i class='bx bx-wallet'></i><p>Belum ada data transaksi untuk dihitung.</p></div>`;
+        return;
+    }
+
+    // Sort keys alphabetically
+    const sortedMethods = Object.keys(assetSummary).sort();
+
+    sortedMethods.forEach(method => {
+        const data = assetSummary[method];
+        const card = document.createElement('div');
+        card.className = 'card asset-card';
+        card.innerHTML = `
+            <div class="asset-card-header">
+                <h3>${method}</h3>
+                <h2 class="${data.balance < 0 ? 'text-expense' : ''}">${formatCurrency(data.balance)}</h2>
+            </div>
+            <div class="asset-card-details">
+                <div class="asset-detail-item">
+                    <span class="text-muted"><i class='bx bx-trending-up'></i> Pemasukan</span>
+                    <span class="text-income">+${formatCurrency(data.income)}</span>
+                </div>
+                <div class="asset-detail-item">
+                    <span class="text-muted"><i class='bx bx-trending-down'></i> Pengeluaran</span>
+                    <span class="text-expense">-${formatCurrency(data.expense)}</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+};
+
+// Render Hutang & Piutang
+const renderHutangPiutang = () => {
+    const hutangList = document.getElementById('hutang-list');
+    const piutangList = document.getElementById('piutang-list');
+    if (!hutangList || !piutangList) return;
+
+    const hpData = {
+        hutang: {}, // contact: { amount: 0, reminders: [] }
+        piutang: {} // contact: { amount: 0, reminders: [] }
+    };
+
+    transactions.forEach(t => {
+        let matchStr = '';
+        if (t.output && t.output.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]/i)) {
+            matchStr = t.output;
+        } else if (t.fundSource && t.fundSource.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]/i)) {
+            matchStr = t.fundSource;
+        } else if (t.description && t.description.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]/i)) {
+            matchStr = t.description;
+        }
+
+        if (!matchStr) return;
+
+        const match = matchStr.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]\s*([^-]*?)(?:\s+-\s+(.*))?$/i);
+        if (match) {
+            const type = match[1].toUpperCase();
+            let contact = (match[2] || '').trim();
+
+            if (!contact && t.description) {
+                contact = t.description.split(' [')[0].split(' | ')[0].trim();
+            }
+
+            if (!contact || contact === '-') contact = 'Tanpa Nama';
+
+            const target = (type === 'HUTANG' || type === 'BAYAR HUTANG') ? hpData.hutang : hpData.piutang;
+            if (!target[contact]) target[contact] = { amount: 0, reminders: [] };
+
+            if (type === 'HUTANG' || type === 'PIUTANG') {
+                target[contact].amount += t.amount;
+                if (t.reminder) target[contact].reminders.push(t.reminder);
+            } else {
+                target[contact].amount -= t.amount;
+            }
+        }
+    });
+
+    const renderList = (data, container, emptyMsg, btnType, btnActionLabel, actionPrefix) => {
+        container.innerHTML = '';
+        let hasData = false;
+
+        for (const [contact, info] of Object.entries(data)) {
+            const { amount, reminders } = info;
+            if (amount <= 0) continue;
+            hasData = true;
+
+            // Cari pengingat terdekat
+            let reminderBadge = '';
+            if (reminders.length > 0) {
+                const sortedReminders = reminders.sort((a, b) => new Date(a) - new Date(b));
+                const nextReminder = new Date(sortedReminders[0]);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const diffTime = nextReminder - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                let badgeColor = 'var(--text-muted)';
+                let badgeText = `Jatuh tempo: ${nextReminder.toLocaleDateString('id-ID')}`;
+
+                if (diffDays === 0) {
+                    badgeColor = 'var(--danger-color)';
+                    badgeText = 'Jatuh tempo HARI INI!';
+                } else if (diffDays < 0) {
+                    badgeColor = 'var(--danger-color)';
+                    badgeText = `Terlewat ${Math.abs(diffDays)} hari!`;
+                } else if (diffDays <= 3) {
+                    badgeColor = '#f59e0b'; // Amber
+                    badgeText = `Jatuh tempo dlm ${diffDays} hari`;
+                }
+
+                reminderBadge = `<div style="font-size: 0.75rem; color: ${badgeColor}; font-weight: 600; margin-top: 0.25rem;"><i class='bx bx-alarm'></i> ${badgeText}</div>`;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'asset-detail-item';
+            item.style.padding = '0.75rem';
+            item.style.background = 'var(--bg-soft)';
+            item.style.borderRadius = '8px';
+            item.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+                    <span style="font-weight: 600; color: var(--text-main);">${contact}</span>
+                    <span class="${btnType === 'HUTANG' ? 'text-expense' : 'text-income'}" style="font-size: 1.1rem; font-weight: 700;">${formatCurrency(amount)}</span>
+                    ${reminderBadge}
+                </div>
+                <button onclick="openHPModal('${actionPrefix}', '${contact}')" style="background: var(--card-border); color: var(--text-main); font-weight: 600; border: none; cursor: pointer; font-size: 0.8rem; padding: 0.4rem 0.75rem; border-radius: 6px; width: auto; height: auto;">
+                    ${btnActionLabel}
+                </button>
+            `;
+            container.appendChild(item);
+        }
+
+        if (!hasData) {
+            container.innerHTML = `<div class="text-muted" style="text-align: center; padding: 1rem; font-size: 0.9rem;">${emptyMsg}</div>`;
+        }
+    };
+
+    renderList(hpData.hutang, hutangList, 'Anda tidak memiliki hutang berjalan.', 'HUTANG', 'Bayar', 'BAYAR HUTANG');
+    renderList(hpData.piutang, piutangList, 'Tidak ada piutang yang sedang berjalan.', 'PIUTANG', 'Terima', 'TERIMA PIUTANG');
+};
+
+window.openHPModal = (hpType, contactName = '') => {
+    openModal();
+
+    const isIncome = (hpType === 'HUTANG' || hpType === 'TERIMA PIUTANG');
+
+    if (isIncome) {
+        document.getElementById('type-income').checked = true;
+    } else {
+        document.getElementById('type-expense').checked = true;
+    }
+
+    let prefix = `[${hpType}]`;
+    if (contactName) {
+        prefix += ` ${contactName}`;
+    } else {
+        prefix += ` `;
+    }
+
+    const fundSourceEl = document.getElementById('fund-source');
+    const outputEl = document.getElementById('output');
+
+    if (isIncome) {
+        // Pemasukan: Uang bersumber dari Hutang/Piutang
+        if (fundSourceEl) fundSourceEl.value = prefix;
+        if (outputEl) outputEl.value = hpType.includes('PIUTANG') ? '[PIUTANG]' : '[HUTANG]';
+    } else {
+        // Pengeluaran: Uang ditujukan/outputnya untuk Hutang/Piutang
+        if (outputEl) outputEl.value = prefix;
+        if (fundSourceEl) fundSourceEl.value = ''; // Biarkan user pilih sumber dana aslinya
+    }
+
+    setSplitDescription('');
+
+    setTimeout(() => {
+        const targetEl = isIncome ? fundSourceEl : outputEl;
+        if (targetEl) {
+            targetEl.focus();
+            const len = targetEl.value.length;
+            if (targetEl.setSelectionRange) {
+                targetEl.setSelectionRange(len, len);
+            }
+        }
+    }, 100);
 };
 
 // Update Datalist for Master Outputs
@@ -538,6 +759,7 @@ const getPeriodData = (periodId) => {
     const now = new Date();
     const selectEl = document.getElementById(periodId);
     const period = selectEl ? selectEl.value : 'monthly';
+    const financialTransactions = transactions.filter(t => t.output !== '[PENGINGAT]');
     let currentTrans = [];
     let prevTrans = [];
     let labelCur = 'Bulan Ini';
@@ -547,12 +769,12 @@ const getPeriodData = (periodId) => {
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
-        currentTrans = transactions.filter(t => {
+        currentTrans = financialTransactions.filter(t => {
             const d = new Date(t.date);
             return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
         });
 
-        prevTrans = transactions.filter(t => {
+        prevTrans = financialTransactions.filter(t => {
             const d = new Date(t.date);
             let pm = currentMonth - 1;
             let py = currentYear;
@@ -566,13 +788,13 @@ const getPeriodData = (periodId) => {
         const msPerDay = 24 * 60 * 60 * 1000;
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-        currentTrans = transactions.filter(t => {
+        currentTrans = financialTransactions.filter(t => {
             const d = new Date(t.date).getTime();
             const diffDays = (startOfToday - d) / msPerDay;
             return diffDays >= -1 && diffDays <= 6;
         });
 
-        prevTrans = transactions.filter(t => {
+        prevTrans = financialTransactions.filter(t => {
             const d = new Date(t.date).getTime();
             const diffDays = (startOfToday - d) / msPerDay;
             return diffDays > 6 && diffDays <= 13;
@@ -582,12 +804,12 @@ const getPeriodData = (periodId) => {
         labelPrev = 'Tahun Lalu';
         const currentYear = now.getFullYear();
 
-        currentTrans = transactions.filter(t => new Date(t.date).getFullYear() === currentYear);
-        prevTrans = transactions.filter(t => new Date(t.date).getFullYear() === currentYear - 1);
+        currentTrans = financialTransactions.filter(t => new Date(t.date).getFullYear() === currentYear);
+        prevTrans = financialTransactions.filter(t => new Date(t.date).getFullYear() === currentYear - 1);
     } else if (period === 'all') {
         labelCur = 'Semua Data';
         labelPrev = '-';
-        currentTrans = transactions;
+        currentTrans = financialTransactions;
         prevTrans = [];
     }
 
@@ -769,7 +991,7 @@ const getFilteredTransactions = () => {
     const fCat = document.getElementById('filter-category')?.value || '';
     const fMethod = document.getElementById('filter-method')?.value || '';
 
-    let result = transactions.filter(t => {
+    let result = transactions.filter(t => t.output !== '[PENGINGAT]').filter(t => {
         const matchSearch = !search ||
             (t.output || '').toLowerCase().includes(search) ||
             (t.description || '').toLowerCase().includes(search) ||
@@ -1077,7 +1299,8 @@ const addTransaction = async (e) => {
         paymentMethod,
         fundSource,
         description,
-        reminder: document.getElementById('enable-reminder').checked ? document.getElementById('reminder-time').value : null
+        reminder: document.getElementById('enable-reminder').checked ? document.getElementById('reminder-time').value : null,
+        recurrence: document.getElementById('enable-reminder').checked ? document.getElementById('reminder-recurrence').value : 'once'
     };
 
     // Prepare File
@@ -1288,6 +1511,38 @@ window.removeTransaction = async (id, btnElement) => {
     }
 };
 
+// Remove quick reminder
+window.deleteQuickReminder = async (id, btnElement) => {
+    if (confirm('Apakah Anda yakin ingin menghapus pengingat ini?')) {
+        const originalBtnHTML = btnElement.innerHTML;
+        btnElement.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i>";
+        btnElement.disabled = true;
+
+        try {
+            await fetch(SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'delete',
+                    id: id.toString()
+                }),
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                }
+            });
+
+            reminders = reminders.filter(r => r.id.toString() !== id.toString());
+            renderReminderList();
+            showToast('Pengingat berhasil dihapus', 'success');
+
+        } catch (error) {
+            console.error('Error deleting reminder:', error);
+            alert('Gagal menghapus pengingat.');
+            btnElement.innerHTML = originalBtnHTML;
+            btnElement.disabled = false;
+        }
+    }
+};
+
 // Clear all transactions functionality removed as requested
 
 const requestCloseModal = () => {
@@ -1392,24 +1647,58 @@ document.querySelectorAll('.btn-preset').forEach(btn => {
     });
 });
 
+const getNextOccurrence = (dateStr, recurrence) => {
+    let date = new Date(dateStr);
+    if (isNaN(date)) return null;
+
+    if (recurrence === 'daily') date.setDate(date.getDate() + 1);
+    else if (recurrence === 'weekly') date.setDate(date.getDate() + 7);
+    else if (recurrence === 'monthly') date.setMonth(date.getMonth() + 1);
+    else return null;
+
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+};
+
 // Reminder Check System
 const checkReminders = () => {
+    const isEnabled = localStorage.getItem('notifications_enabled') !== 'false';
+    if (!isEnabled) return;
+
     const now = new Date().getTime();
     const lastChecked = localStorage.getItem('last_reminder_check') || 0;
 
-    // Only check if it's been more than 1 minute since last check
     if (now - lastChecked < 60000) return;
 
-    transactions.forEach(t => {
+    transactions.forEach(async (t) => {
         if (t.reminder && t.reminder !== "") {
             const rTime = new Date(t.reminder).getTime();
-            // If reminder time is between last check and now
             if (rTime > lastChecked && rTime <= now) {
-                new Notification('Pengingat FinansialKu', {
-                    body: `Waktunya: ${t.description} (${formatCurrency(t.amount)})`,
-                    icon: 'https://cdn-icons-png.flaticon.com/512/2488/2488744.png'
-                });
+                // Trigger notification
+                if (Notification.permission === 'granted') {
+                    new Notification('Pengingat FinansialKu', {
+                        body: `Waktunya: ${t.description} (${formatCurrency(t.amount)})`,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/2488/2488744.png'
+                    });
+                }
                 showToast(`Pengingat: ${t.description}`, 'info');
+
+                // Handle recurrence
+                if (t.recurrence && t.recurrence !== 'once') {
+                    const nextTime = getNextOccurrence(t.reminder, t.recurrence);
+                    if (nextTime) {
+                        t.reminder = nextTime;
+                        // Update in background
+                        fetch(SCRIPT_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'edit',
+                                data: t
+                            }),
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                        }).catch(err => console.error('Gagal update pengingat berulang:', err));
+                    }
+                }
             }
         }
     });
@@ -1417,19 +1706,12 @@ const checkReminders = () => {
     localStorage.setItem('last_reminder_check', now);
 };
 if (notificationBtn) {
-    notificationBtn.addEventListener('click', async () => {
-        if (!('Notification' in window)) {
-            showToast('Browser Anda tidak mendukung notifikasi', 'error');
-            return;
-        }
-
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            openReminderModal();
-        } else if (permission === 'denied') {
-            showToast('Izin diblokir. Klik ikon gembok di browser untuk mengizinkan.', 'error');
-        } else {
-            showToast('Izin notifikasi ditolak', 'error');
+    notificationBtn.addEventListener('click', () => {
+        openReminderModal();
+        
+        // Cek izin notifikasi di latar belakang jika belum pernah diminta
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
         }
     });
 }
@@ -1453,15 +1735,142 @@ reminderListModal?.addEventListener('click', (e) => {
     if (e.target === reminderListModal) closeReminderModal();
 });
 
+const initNotificationSettings = () => {
+    const statusEl = document.getElementById('notif-permission-status');
+    const toggleEl = document.getElementById('settings-notif-toggle');
+    const requestBtn = document.getElementById('request-notif-btn');
+    const testBtn = document.getElementById('test-notif-btn');
+
+    if (!statusEl || !toggleEl) return;
+
+    const updateStatus = () => {
+        if (!('Notification' in window)) {
+            statusEl.innerText = 'Tidak Didukung';
+            statusEl.className = 'status-badge online'; // reused class for color
+            statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+            statusEl.style.color = 'var(--expense-color)';
+            return;
+        }
+        const permission = Notification.permission;
+        statusEl.innerText = permission === 'granted' ? 'Diizinkan' : (permission === 'denied' ? 'Ditolak' : 'Belum Diminta');
+        statusEl.style.background = permission === 'granted' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+        statusEl.style.color = permission === 'granted' ? 'var(--income-color)' : 'var(--expense-color)';
+    };
+
+    updateStatus();
+
+    const isEnabled = localStorage.getItem('notifications_enabled') !== 'false';
+    toggleEl.checked = isEnabled;
+
+    toggleEl.addEventListener('change', (e) => {
+        localStorage.setItem('notifications_enabled', e.target.checked);
+        showToast(`Notifikasi ${e.target.checked ? 'diaktifkan' : 'dimatikan'}`, 'info');
+    });
+
+    requestBtn.addEventListener('click', async () => {
+        if (!('Notification' in window)) {
+            showToast('Browser Anda tidak mendukung notifikasi', 'error');
+            return;
+        }
+        const permission = await Notification.requestPermission();
+        updateStatus();
+        if (permission === 'granted') showToast('Izin notifikasi diberikan!', 'success');
+    });
+
+    testBtn.addEventListener('click', () => {
+        if (Notification.permission === 'granted') {
+            new Notification('FinansialKu', {
+                body: 'Tes notifikasi berhasil! Sistem pengingat aktif.',
+                icon: 'https://cdn-icons-png.flaticon.com/512/2488/2488744.png'
+            });
+        } else {
+            showToast('Izinkan notifikasi terlebih dahulu', 'warning');
+        }
+    });
+
+    // Quick Reminder Logic
+    const quickText = document.getElementById('quick-notif-text');
+    const quickTime = document.getElementById('quick-notif-time');
+    const quickSaveBtn = document.getElementById('save-quick-notif-btn');
+
+    if (quickSaveBtn) {
+        quickSaveBtn.addEventListener('click', async () => {
+            const text = quickText.value.trim();
+            const time = quickTime.value;
+
+            if (!text || !time) {
+                showToast('Harap isi pesan dan waktu pengingat', 'warning');
+                return;
+            }
+
+            const newRem = {
+                id: new Date().getTime().toString(),
+                date: new Date().toISOString().split('T')[0],
+                description: text,
+                reminder: time,
+                recurrence: document.getElementById('quick-notif-recurrence').value,
+                isQuickReminder: true
+            };
+
+            quickSaveBtn.disabled = true;
+            quickSaveBtn.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i> Menyimpan...";
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'addQuickReminder',
+                        data: newRem
+                    }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast('Pengingat kustom berhasil dibuat!', 'success');
+                    quickText.value = '';
+                    quickTime.value = '';
+                    await init(); // Refresh data
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Quick Notif Error:', error);
+                alert('Gagal membuat pengingat: ' + error.message);
+            } finally {
+                quickSaveBtn.disabled = false;
+                quickSaveBtn.innerHTML = "<i class='bx bx-save'></i> Simpan Pengingat";
+            }
+        });
+    }
+};
+
 const renderReminderList = () => {
     if (!reminderListContainer) return;
 
-    // Ambil transaksi yang memiliki reminder
-    const reminders = transactions
-        .filter(t => t.reminder && t.reminder !== "")
-        .sort((a, b) => new Date(a.reminder) - new Date(b.reminder));
+    const now = new Date();
+    
+    // Gabungkan pengingat dari transaksi dan pengingat kustom
+    const combinedReminders = [
+        ...transactions.filter(t => t.reminder && t.reminder !== ""),
+        ...reminders
+    ].sort((a, b) => {
+        const timeA = new Date(a.reminder);
+        const timeB = new Date(b.reminder);
+        const isPastA = timeA < now;
+        const isPastB = timeB < now;
 
-    if (reminders.length === 0) {
+        // Aturan: Mendatang dulu, baru yang sudah terlewat
+        if (isPastA && !isPastB) return 1;
+        if (!isPastA && isPastB) return -1;
+
+        // Jika sama-sama mendatang: urutkan dari yang paling dekat (ascending)
+        if (!isPastA) return timeA - timeB;
+        
+        // Jika sama-sama terlewat: urutkan dari yang paling baru (descending)
+        return timeB - timeA;
+    });
+
+    if (combinedReminders.length === 0) {
         reminderListContainer.innerHTML = `
             <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
                 <i class='bx bx-bell-off' style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
@@ -1471,18 +1880,19 @@ const renderReminderList = () => {
         return;
     }
 
-    const now = new Date();
-
-    reminderListContainer.innerHTML = reminders.map(t => {
+    reminderListContainer.innerHTML = combinedReminders.map(t => {
         const rTime = new Date(t.reminder);
         const isPassed = rTime < now;
         const statusText = isPassed ? "Sudah Terlewat" : "Akan Datang";
         const statusColor = isPassed ? "var(--expense-color)" : "var(--accent-primary)";
+        const isQuick = t.isQuickReminder === true;
 
         return `
             <div class="card" style="margin-bottom: 0.75rem; padding: 1rem; border-left: 4px solid ${statusColor}; background: var(--item-bg);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                    <div style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;">${t.description || 'Tanpa Keterangan'}</div>
+                    <div style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;">
+                        ${isQuick ? '<i class="bx bx-paper-plane" style="color: var(--income-color)"></i> ' : ''}${t.description || 'Tanpa Keterangan'}
+                    </div>
                     <span style="font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: ${isPassed ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'}; color: ${statusColor}; font-weight: 600; text-transform: uppercase;">
                         ${statusText}
                     </span>
@@ -1490,10 +1900,17 @@ const renderReminderList = () => {
                 <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
                     <i class='bx bx-calendar-event'></i> ${formatDate(t.reminder)} jam ${rTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </div>
+                ${t.amount ? `
                 <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
                     <i class='bx bx-money'></i> ${formatCurrency(t.amount)}
                 </div>
-                <button class="btn-clear" onclick="closeReminderModal(); viewTransaction('${t.id}')" style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--accent-primary); text-decoration: underline; padding: 0;">Lihat Transaksi</button>
+                ` : ''}
+                <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                    ${isQuick ? 
+                        `<button class="btn-clear" onclick="deleteQuickReminder('${t.id}', this)" style="font-size: 0.75rem; color: var(--expense-color); text-decoration: underline; padding: 0;">Hapus Pengingat</button>` : 
+                        `<button class="btn-clear" onclick="closeReminderModal(); viewTransaction('${t.id}')" style="font-size: 0.75rem; color: var(--accent-primary); text-decoration: underline; padding: 0;">Lihat Transaksi</button>`
+                    }
+                </div>
             </div>
         `;
     }).join('');
@@ -1533,22 +1950,84 @@ removeReceiptBtn.addEventListener('click', function () {
     isReceiptDeleted = true;
 });
 
+// Bottom Navigation Logic
+const navItems = document.querySelectorAll('.nav-item');
+const assetSection = document.getElementById('asset-section');
+const hpSection = document.getElementById('hp-section');
+
+const switchTab = (tabId) => {
+    if (summarySection) summarySection.style.display = 'none';
+    if (dashboardSection) dashboardSection.style.display = 'none';
+    if (txTableSection) txTableSection.style.display = 'none';
+    if (assetSection) assetSection.style.display = 'none';
+    if (hpSection) hpSection.style.display = 'none';
+    if (settingsSection) settingsSection.style.display = 'none';
+    if (fabBtn) fabBtn.style.display = 'none';
+
+    navItems.forEach(item => {
+        if (item.dataset.tab === tabId) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+
+    if (tabId === 'dashboard') {
+        if (summarySection) summarySection.style.display = 'grid';
+        if (dashboardSection) dashboardSection.style.display = 'grid';
+        if (fabBtn) fabBtn.style.display = 'flex';
+    } else if (tabId === 'transaksi') {
+        if (txTableSection) txTableSection.style.display = 'block';
+        if (fabBtn) fabBtn.style.display = 'flex';
+    } else if (tabId === 'aset') {
+        if (assetSection) assetSection.style.display = 'block';
+    } else if (tabId === 'hutang-piutang') {
+        if (hpSection) hpSection.style.display = 'block';
+    }
+};
+
+if (navItems) {
+    navItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab(item.dataset.tab);
+        });
+    });
+}
+
+// Sidebar Toggle Logic
+const sidebarToggleBtn = document.getElementById('sidebar-toggle');
+const sidebar = document.getElementById('sidebar');
+
+if (sidebarToggleBtn && sidebar) {
+    sidebarToggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        document.body.classList.toggle('sidebar-collapsed');
+    });
+}
+
 // Settings Navigation
 const showSettings = () => {
     if (summarySection) summarySection.style.display = 'none';
     if (dashboardSection) dashboardSection.style.display = 'none';
     if (txTableSection) txTableSection.style.display = 'none';
+    if (assetSection) assetSection.style.display = 'none';
+    if (hpSection) hpSection.style.display = 'none';
     if (fabBtn) fabBtn.style.display = 'none';
     if (settingsSection) settingsSection.style.display = 'block';
     populateSettingsData();
+
+    // Remove active class from nav tabs
+    navItems.forEach(item => item.classList.remove('active'));
 };
 
 const showDashboard = () => {
-    if (summarySection) summarySection.style.display = 'grid';
-    if (dashboardSection) dashboardSection.style.display = 'grid';
-    if (txTableSection) txTableSection.style.display = 'block';
-    if (fabBtn) fabBtn.style.display = 'flex';
-    if (settingsSection) settingsSection.style.display = 'none';
+    const activeTab = document.querySelector('.nav-item.active');
+    if (activeTab) {
+        switchTab(activeTab.dataset.tab);
+    } else {
+        switchTab('dashboard');
+    }
 };
 
 const populateSettingsData = () => {
@@ -1675,6 +2154,7 @@ if (masterForm) {
 // Run init
 initTheme();
 initTableEvents();
+initNotificationSettings();
 init().then(() => {
     // Check reminders after data is loaded
     setTimeout(checkReminders, 2000);

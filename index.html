@@ -40,13 +40,16 @@
         <div class="blob blob-2"></div>
     </div>
 
-    <nav class="navbar">
-        <div class="nav-content">
+    <nav class="navbar" id="top-navbar">
+        <div class="nav-content" style="justify-content: flex-start; gap: 1.5rem;">
+            <button id="sidebar-toggle" class="btn-clear sidebar-toggle-btn">
+                <i class='bx bx-menu'></i>
+            </button>
             <div class="logo">
                 <i class='bx bx-wallet'></i>
                 <h1>FinansialKu</h1>
             </div>
-            <div style="display: flex; gap: 1rem; align-items: center;">
+            <div style="display: flex; gap: 1rem; align-items: center; margin-left: auto;">
                 <button id="notification-btn" class="btn-theme" title="Daftar Pengingat">
                     <i class='bx bx-bell'></i>
                 </button>
@@ -251,32 +254,92 @@
                     <p>Data yang tersinkronisasi dengan Google Sheets.</p>
                     <div class="master-data-lists">
                         <div class="master-item">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                 <span class="label">Kategori (Output)</span>
-                                <button class="btn-clear add-master-btn" onclick="openMasterModal('output')" style="color: var(--accent-primary); font-size: 1.2rem;">
+                                <button class="btn-clear add-master-btn" onclick="openMasterModal('output')"
+                                    style="color: var(--accent-primary); font-size: 1.2rem;">
                                     <i class='bx bx-plus-circle'></i>
                                 </button>
                             </div>
                             <div id="master-output-list" class="badge-container"></div>
                         </div>
                         <div class="master-item">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                 <span class="label">Metode Pembayaran</span>
-                                <button class="btn-clear add-master-btn" onclick="openMasterModal('method')" style="color: var(--accent-primary); font-size: 1.2rem;">
+                                <button class="btn-clear add-master-btn" onclick="openMasterModal('method')"
+                                    style="color: var(--accent-primary); font-size: 1.2rem;">
                                     <i class='bx bx-plus-circle'></i>
                                 </button>
                             </div>
                             <div id="master-method-list" class="badge-container"></div>
                         </div>
                         <div class="master-item">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                 <span class="label">Sumber Dana</span>
-                                <button class="btn-clear add-master-btn" onclick="openMasterModal('source')" style="color: var(--accent-primary); font-size: 1.2rem;">
+                                <button class="btn-clear add-master-btn" onclick="openMasterModal('source')"
+                                    style="color: var(--accent-primary); font-size: 1.2rem;">
                                     <i class='bx bx-plus-circle'></i>
                                 </button>
                             </div>
                             <div id="master-source-list" class="badge-container"></div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card settings-card">
+                    <h3><i class='bx bx-bell'></i> Notifikasi & Pengingat</h3>
+                    <p>Atur bagaimana aplikasi memberi tahu Anda.</p>
+                    
+                    <div class="master-item" style="margin-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="label">Status Izin Notifikasi</span>
+                            <span id="notif-permission-status" class="status-badge" style="background: var(--card-border); color: var(--text-main);">Mengecek...</span>
+                        </div>
+                    </div>
+
+                    <div class="master-item" style="margin-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <span class="label">Aktifkan Notifikasi</span>
+                            <label class="switch">
+                                <input type="checkbox" id="settings-notif-toggle">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <p class="text-muted" style="font-size: 0.8rem;">Jika aktif, Anda akan menerima pemberitahuan saat waktu pengingat tiba.</p>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="request-notif-btn" class="btn-submit" style="flex: 1; font-size: 0.85rem; background: var(--accent-primary); color: white;">
+                            <i class='bx bx-lock-open-alt'></i> Minta Izin
+                        </button>
+                        <button id="test-notif-btn" class="btn-submit" style="flex: 1; font-size: 0.85rem; background: var(--card-border); color: var(--text-main);">
+                            <i class='bx bx-bell-plus'></i> Tes Notif
+                        </button>
+                    </div>
+
+                    <!-- Quick Reminder Form -->
+                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px dashed var(--card-border);">
+                        <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem;"><i class='bx bx-paper-plane'></i> Buat Pengingat Cepat</h4>
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="text" id="quick-notif-text" placeholder="Isi pesan pengingat..." style="width: 100%; font-size: 0.9rem; padding: 0.6rem; border-radius: 6px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="datetime-local" id="quick-notif-time" style="width: 100%; font-size: 0.9rem; padding: 0.6rem; border-radius: 6px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <select id="quick-notif-recurrence" style="width: 100%; font-size: 0.85rem; padding: 0.5rem; border-radius: 6px; background: var(--input-bg); color: var(--text-main); border: 1px solid var(--input-border);">
+                                <option value="once">Sekali Saja</option>
+                                <option value="daily">Setiap Hari</option>
+                                <option value="weekly">Setiap Minggu</option>
+                                <option value="monthly">Setiap Bulan</option>
+                            </select>
+                        </div>
+                        <button id="save-quick-notif-btn" class="btn-submit" style="width: 100%; font-size: 0.85rem; background: var(--income-color); color: white;">
+                            <i class='bx bx-save'></i> Simpan Pengingat
+                        </button>
                     </div>
                 </div>
 
@@ -297,13 +360,76 @@
                             <span>Aktif</span>
                         </div>
                     </div>
-                    <button id="refresh-app-btn" class="btn-submit" style="margin-top: 1rem; background: var(--card-border); color: var(--text-main);">
+                    <button id="refresh-app-btn" class="btn-submit"
+                        style="margin-top: 1rem; background: var(--card-border); color: var(--text-main);">
                         <i class='bx bx-refresh'></i> Cek Pembaruan
                     </button>
                 </div>
             </div>
         </section>
+
+        <!-- Asset Section -->
+        <section id="asset-section" style="display: none;" class="asset-section">
+            <div class="asset-header" style="margin-bottom: 1.5rem;">
+                <h2 style="display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;"><i
+                        class='bx bx-wallet'></i> Ringkasan Aset</h2>
+                <p class="text-muted" style="margin-top: 0.25rem; font-size: 0.9rem;">Total saldo, pemasukan, dan
+                    pengeluaran per metode pembayaran.</p>
+            </div>
+            <div id="asset-cards-container" class="asset-grid">
+                <!-- Diisi oleh JS -->
+            </div>
+        </section>
+
+        <!-- Hutang Piutang Section -->
+        <section id="hp-section" style="display: none;" class="asset-section">
+            <div class="asset-header" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h2 style="display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;"><i class='bx bx-group'></i> Hutang & Piutang</h2>
+                    <p class="text-muted" style="margin-top: 0.25rem; font-size: 0.9rem;">Catatan kewajiban dan piutang per kontak.</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button onclick="openHPModal('HUTANG')" title="Catat Hutang" style="background: rgba(239, 68, 68, 0.1); color: var(--expense-color); border: none; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.4rem;">
+                        <i class='bx bx-plus' style="font-size: 1.2rem;"></i> Hutang
+                    </button>
+                    <button onclick="openHPModal('PIUTANG')" title="Catat Piutang" style="background: rgba(16, 185, 129, 0.1); color: var(--income-color); border: none; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.4rem;">
+                        <i class='bx bx-plus' style="font-size: 1.2rem;"></i> Piutang
+                    </button>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem;">
+                <div class="card">
+                    <h3 style="font-size: 1.1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem; margin-bottom: 1rem;"><i class='bx bx-down-arrow-circle' style="color: var(--expense-color);"></i> Hutang Saya (Kewajiban)</h3>
+                    <div id="hutang-list" style="display: flex; flex-direction: column; gap: 0.75rem;"></div>
+                </div>
+                <div class="card">
+                    <h3 style="font-size: 1.1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem; margin-bottom: 1rem;"><i class='bx bx-up-arrow-circle' style="color: var(--income-color);"></i> Piutang (Hak Saya)</h3>
+                    <div id="piutang-list" style="display: flex; flex-direction: column; gap: 0.75rem;"></div>
+                </div>
+            </div>
+        </section>
     </main>
+
+    <!-- Bottom Navigation / Sidebar -->
+    <nav class="bottom-nav" id="sidebar">
+        <a href="#" class="nav-item active" data-tab="dashboard">
+            <i class='bx bx-home-alt'></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-tab="transaksi">
+            <i class='bx bx-transfer-alt'></i>
+            <span>Transaksi</span>
+        </a>
+        <a href="#" class="nav-item" data-tab="aset">
+            <i class='bx bx-pie-chart-alt'></i>
+            <span>Aset</span>
+        </a>
+        <a href="#" class="nav-item" data-tab="hutang-piutang">
+            <i class='bx bx-group'></i>
+            <span>Hutang</span>
+        </a>
+    </nav>
 
     <!-- Modal Form -->
     <div class="modal-overlay" id="transaction-modal">
@@ -365,7 +491,7 @@
                          though we'll likely update app.js to collect from container -->
                     <textarea id="description" style="display:none;"></textarea>
                 </div>
-
+                
                 <div class="form-group">
                     <label for="amount">Total Nominal (Rp)</label>
                     <input type="text" id="amount" inputmode="numeric" placeholder="0" required>
@@ -408,6 +534,16 @@
                             <button type="button" class="btn-preset" data-add="3h">+3 Jam</button>
                             <button type="button" class="btn-preset" data-add="tomorrow">Besok Pagi</button>
                             <button type="button" class="btn-preset" data-add="1w">Minggu Depan</button>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="reminder-recurrence">Ulangi Pengingat?</label>
+                            <select id="reminder-recurrence" style="width: 100%; margin-top: 0.5rem; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-main);">
+                                <option value="once">Sekali Saja</option>
+                                <option value="daily">Harian (Setiap Hari)</option>
+                                <option value="weekly">Mingguan (Setiap Minggu)</option>
+                                <option value="monthly">Bulanan (Setiap Bulan)</option>
+                            </select>
                         </div>
 
                         <p id="reminder-info"
@@ -460,7 +596,8 @@
                         <label for="master-value">Nama/Nilai Baru</label>
                         <input type="text" id="master-value" placeholder="Masukkan nama..." required>
                     </div>
-                    <button type="submit" class="btn-submit" id="master-submit-btn" style="width: 100%; margin-top: 1rem;">
+                    <button type="submit" class="btn-submit" id="master-submit-btn"
+                        style="width: 100%; margin-top: 1rem;">
                         <i class='bx bx-plus-circle'></i> Tambahkan
                     </button>
                 </form>
