@@ -662,6 +662,7 @@ const renderSumberDanaSummary = () => {
 
     // Group by fundSource
     const summary = {};
+    const hpPerSource = {}; // sourceName: { hutang: {}, piutang: {} }
 
     // Ambil semua dari masterSources agar selalu terdaftar meskipun belum ada transaksi
     masterSources.forEach(source => {
@@ -670,24 +671,69 @@ const renderSumberDanaSummary = () => {
             expense: 0,
             balance: 0
         };
+        hpPerSource[source] = { hutang: {}, piutang: {} };
     });
 
-    transactions.filter(t => t.output !== '[PENGINGAT]').forEach(t => {
-        const source = t.fundSource || 'Lainnya';
-        if (!summary[source]) {
-            summary[source] = {
-                income: 0,
-                expense: 0,
-                balance: 0
-            };
+    transactions.forEach(t => {
+        // 1. Hitung alokasi budget (Pemasukan & Pengeluaran)
+        if (t.output !== '[PENGINGAT]') {
+            const source = t.fundSource || 'Lainnya';
+            if (!summary[source]) {
+                summary[source] = { income: 0, expense: 0, balance: 0 };
+            }
+
+            if (t.type === 'income') {
+                summary[source].income += t.amount;
+                summary[source].balance += t.amount;
+            } else if (t.type === 'expense') {
+                summary[source].expense += t.amount;
+                summary[source].balance -= t.amount;
+            }
         }
 
-        if (t.type === 'income') {
-            summary[source].income += t.amount;
-            summary[source].balance += t.amount;
-        } else if (t.type === 'expense') {
-            summary[source].expense += t.amount;
-            summary[source].balance -= t.amount;
+        // 2. Hitung Hutang Piutang per Sumber Dana
+        let matchStr = '';
+        if (t.output && t.output.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]/i)) {
+            matchStr = t.output;
+        } else if (t.fundSource && t.fundSource.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]/i)) {
+            matchStr = t.fundSource;
+        } else if (t.description && t.description.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]/i)) {
+            matchStr = t.description;
+        }
+
+        if (!matchStr) return;
+
+        const match = matchStr.match(/^\[(HUTANG|PIUTANG|BAYAR HUTANG|TERIMA PIUTANG)\]\s*([^-]*?)(?:\s+-\s+(.*))?$/i);
+        if (match) {
+            const type = match[1].toUpperCase();
+            let contact = (match[2] || '').trim();
+            if (!contact && t.description) {
+                contact = t.description.split(' [')[0].split(' | ')[0].trim();
+            }
+            if (!contact || contact === '-') contact = 'Tanpa Nama';
+
+            // Pemasukan: Uang masuk ke Metode Pembayaran/Dompet tujuan
+            // Pengeluaran: Uang keluar dari Sumber Dana pengirim
+            let targetSource = '';
+            if (type === 'HUTANG' || type === 'TERIMA PIUTANG') {
+                targetSource = t.paymentMethod || 'Lainnya';
+            } else {
+                targetSource = t.fundSource || 'Lainnya';
+            }
+
+            if (!hpPerSource[targetSource]) {
+                hpPerSource[targetSource] = { hutang: {}, piutang: {} };
+            }
+
+            if (type === 'HUTANG') {
+                hpPerSource[targetSource].hutang[contact] = (hpPerSource[targetSource].hutang[contact] || 0) + t.amount;
+            } else if (type === 'BAYAR HUTANG') {
+                hpPerSource[targetSource].hutang[contact] = (hpPerSource[targetSource].hutang[contact] || 0) - t.amount;
+            } else if (type === 'PIUTANG') {
+                hpPerSource[targetSource].piutang[contact] = (hpPerSource[targetSource].piutang[contact] || 0) + t.amount;
+            } else if (type === 'TERIMA PIUTANG') {
+                hpPerSource[targetSource].piutang[contact] = (hpPerSource[targetSource].piutang[contact] || 0) - t.amount;
+            }
         }
     });
 
@@ -709,6 +755,59 @@ const renderSumberDanaSummary = () => {
         let progressBarColor = 'var(--income-color)';
         if (percentSpent > 80) progressBarColor = '#f59e0b'; // warning orange
         if (percentSpent > 100) progressBarColor = 'var(--expense-color)'; // danger red
+
+        // Rincian Hutang Piutang
+        const hpInfo = hpPerSource[source] || { hutang: {}, piutang: {} };
+        const activeHutang = [];
+        const activePiutang = [];
+
+        for (const [contact, amount] of Object.entries(hpInfo.hutang)) {
+            if (amount > 0) activeHutang.push({ contact, amount });
+        }
+        for (const [contact, amount] of Object.entries(hpInfo.piutang)) {
+            if (amount > 0) activePiutang.push({ contact, amount });
+        }
+
+        let hpHtmlSummary = '';
+        let hpDetailsHtml = '';
+
+        if (activeHutang.length > 0 || activePiutang.length > 0) {
+            const totalHutang = activeHutang.reduce((s, item) => s + item.amount, 0);
+            const totalPiutang = activePiutang.reduce((s, item) => s + item.amount, 0);
+
+            hpHtmlSummary = `
+                <div style="margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; width: 100%; border-top: 1px dashed var(--card-border); padding-top: 0.5rem;">
+                    <div style="display: flex; gap: 0.3rem; font-size: 0.72rem; flex-wrap: wrap;">
+                        ${totalHutang > 0 ? `<span style="background: rgba(239, 68, 68, 0.08); color: var(--expense-color); padding: 0.15rem 0.35rem; border-radius: 4px; font-weight: 500;">Hutang: ${formatCurrency(totalHutang)}</span>` : ''}
+                        ${totalPiutang > 0 ? `<span style="background: rgba(16, 185, 129, 0.08); color: var(--income-color); padding: 0.15rem 0.35rem; border-radius: 4px; font-weight: 500;">Piutang: ${formatCurrency(totalPiutang)}</span>` : ''}
+                    </div>
+                    <button class="btn-clear" onclick="toggleCardHPDetails(this)" style="font-size: 0.72rem; color: var(--accent-primary); padding: 0.15rem 0; cursor: pointer; display: flex; align-items: center; gap: 0.1rem; background: none; border: none; font-weight: 600;">
+                        Rincian <i class='bx bx-chevron-down' style="font-size: 0.95rem;"></i>
+                    </button>
+                </div>
+            `;
+
+            let hutangItemsHtml = activeHutang.map(item => `
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 0.2rem 0;">
+                    <span class="text-muted" style="display: flex; align-items: center; gap: 0.2rem;"><i class='bx bx-down-arrow-circle' style="color: var(--expense-color); font-size: 0.9rem;"></i> ${item.contact}</span>
+                    <span class="text-expense" style="font-weight: 600;">${formatCurrency(item.amount)}</span>
+                </div>
+            `).join('');
+
+            let piutangItemsHtml = activePiutang.map(item => `
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 0.2rem 0;">
+                    <span class="text-muted" style="display: flex; align-items: center; gap: 0.2rem;"><i class='bx bx-up-arrow-circle' style="color: var(--income-color); font-size: 0.9rem;"></i> ${item.contact}</span>
+                    <span class="text-income" style="font-weight: 600;">${formatCurrency(item.amount)}</span>
+                </div>
+            `).join('');
+
+            hpDetailsHtml = `
+                <div class="hp-details-wrapper" style="display: none; margin-top: 0.5rem; width: 100%; border-top: 1px dotted var(--card-border); padding-top: 0.4rem;">
+                    ${activeHutang.length > 0 ? `<div style="margin-bottom: 0.4rem;"><h4 style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.15rem;">Rincian Hutang</h4>${hutangItemsHtml}</div>` : ''}
+                    ${activePiutang.length > 0 ? `<div><h4 style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.15rem;">Rincian Piutang</h4>${piutangItemsHtml}</div>` : ''}
+                </div>
+            `;
+        }
 
         const card = document.createElement('div');
         card.className = 'card asset-card';
@@ -735,10 +834,26 @@ const renderSumberDanaSummary = () => {
                         <div style="width: ${percentVal}%; height: 100%; background: ${progressBarColor}; border-radius: 4px; transition: width 0.3s ease;"></div>
                     </div>
                 </div>
+                ${hpHtmlSummary}
+                ${hpDetailsHtml}
             </div>
         `;
         container.appendChild(card);
     });
+};
+
+window.toggleCardHPDetails = (btn) => {
+    const wrapper = btn.closest('.asset-card-details').querySelector('.hp-details-wrapper');
+    const icon = btn.querySelector('i');
+    if (wrapper) {
+        if (wrapper.style.display === 'none') {
+            wrapper.style.display = 'block';
+            if (icon) icon.className = 'bx bx-chevron-up';
+        } else {
+            wrapper.style.display = 'none';
+            if (icon) icon.className = 'bx bx-chevron-down';
+        }
+    }
 };
 
 window.openHPModal = (hpType, contactName = '') => {
