@@ -206,6 +206,33 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
       .setMimeType(ContentService.MimeType.JSON);
   }
+  else if (action === 'toggleMasterActive') {
+    var type = body.type; // 'output', 'method', or 'source'
+    var value = body.value; // the master item value
+    var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+    if (!masterSheet) { setup(); masterSheet = ss.getSheetByName(MASTER_SHEET_NAME); }
+    
+    var colMap = { 'output': 0, 'method': 1, 'source': 2 };
+    var colIndex = colMap[type];
+    
+    var data = masterSheet.getDataRange().getValues();
+    var valueLower = value.toLowerCase();
+    var targetValue = "";
+    
+    for (var i = 1; i < data.length; i++) {
+      var cellVal = (data[i][colIndex] || "").toString().trim();
+      if (cellVal.toLowerCase() === valueLower) {
+        targetValue = "[NONAKTIF] " + cellVal;
+        masterSheet.getRange(i + 1, colIndex + 1).setValue(targetValue);
+        break;
+      } else if (cellVal.toLowerCase() === ("[nonaktif] " + valueLower)) {
+        targetValue = cellVal.substring(11).trim();
+        masterSheet.getRange(i + 1, colIndex + 1).setValue(targetValue);
+        break;
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', newValue: targetValue })).setMimeType(ContentService.MimeType.JSON);
+  }
   
   return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Action not found'}))
     .setMimeType(ContentService.MimeType.JSON);

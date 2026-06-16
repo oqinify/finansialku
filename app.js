@@ -9,6 +9,9 @@ let reminders = [];
 let masterOutputs = [];
 let masterMethods = [];
 let masterSources = [];
+let inactiveOutputs = [];
+let inactiveMethods = [];
+let inactiveSources = [];
 let editingTransactionId = null;
 let isReceiptDeleted = false;
 let charts = {};
@@ -436,6 +439,7 @@ const fetchTransactions = async () => {
             masterOutputs = data.masterOutputs || [];
             masterMethods = data.masterMethods || [];
             masterSources = data.masterSources || [];
+            parseMasterStatus();
             updateMasterDatalist();
             updateMasterMethods();
             updateMasterSources();
@@ -782,12 +786,45 @@ window.openHPModal = (hpType, contactName = '') => {
     }, 100);
 };
 
+// Parse Master items status from GAS Google Sheets
+const parseMasterStatus = () => {
+    inactiveOutputs = [];
+    inactiveMethods = [];
+    inactiveSources = [];
+
+    masterOutputs = masterOutputs.map(o => {
+        if (o.startsWith('[NONAKTIF] ')) {
+            const clean = o.substring(11);
+            inactiveOutputs.push(clean);
+            return clean;
+        }
+        return o;
+    });
+
+    masterMethods = masterMethods.map(m => {
+        if (m.startsWith('[NONAKTIF] ')) {
+            const clean = m.substring(11);
+            inactiveMethods.push(clean);
+            return clean;
+        }
+        return m;
+    });
+
+    masterSources = masterSources.map(s => {
+        if (s.startsWith('[NONAKTIF] ')) {
+            const clean = s.substring(11);
+            inactiveSources.push(clean);
+            return clean;
+        }
+        return s;
+    });
+};
+
 // Update Datalist for Master Outputs
 const updateMasterDatalist = () => {
     const datalist = document.getElementById('master-outputs');
     if (!datalist) return;
 
-    const inactiveOutputs = JSON.parse(localStorage.getItem('inactive_outputs')) || [];
     datalist.innerHTML = '';
     masterOutputs.forEach(output => {
         if (!inactiveOutputs.includes(output)) {
@@ -803,7 +840,6 @@ const updateMasterMethods = () => {
     const selectEl = document.getElementById('payment-method');
     if (!selectEl) return;
 
-    const inactiveMethods = JSON.parse(localStorage.getItem('inactive_methods')) || [];
     const currentValue = selectEl.value;
     selectEl.innerHTML = '<option value="" disabled selected>Pilih Metode Pembayaran...</option>';
 
@@ -826,7 +862,6 @@ const updateMasterSources = () => {
     const datalist = document.getElementById('master-sources');
     if (!datalist) return;
 
-    const inactiveSources = JSON.parse(localStorage.getItem('inactive_sources')) || [];
     datalist.innerHTML = '';
     masterSources.forEach(source => {
         if (!inactiveSources.includes(source)) {
@@ -2130,28 +2165,41 @@ const showDashboard = () => {
     }
 };
 
-window.toggleMasterItemActive = (type, value) => {
-    const key = `inactive_${type}s`;
-    let inactiveItems = JSON.parse(localStorage.getItem(key)) || [];
-    if (inactiveItems.includes(value)) {
-        inactiveItems = inactiveItems.filter(item => item !== value);
-        showToast(`${value} diaktifkan kembali`, 'success');
-    } else {
-        inactiveItems.push(value);
-        showToast(`${value} dinonaktifkan`, 'info');
+window.toggleMasterItemActive = async (type, value) => {
+    showToast(`Memperbarui status ${value}...`, 'info');
+    
+    // Cari nama aslinya di sheet (apakah bersih atau berawalan [NONAKTIF])
+    const isCurrentlyInactive = (type === 'output' && inactiveOutputs.includes(value)) ||
+                                (type === 'method' && inactiveMethods.includes(value)) ||
+                                (type === 'source' && inactiveSources.includes(value));
+    
+    const lookupValue = isCurrentlyInactive ? `[NONAKTIF] ${value}` : value;
+
+    try {
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'toggleMasterActive',
+                type: type,
+                value: lookupValue
+            }),
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+            showToast(`${value} berhasil ${isCurrentlyInactive ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+            await fetchTransactions(); // Refresh data dari server
+            populateSettingsData();
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        console.error('Toggle Master Status Error:', error);
+        alert('Gagal memperbarui status: ' + error.message);
     }
-    localStorage.setItem(key, JSON.stringify(inactiveItems));
-    populateSettingsData();
-    updateMasterDatalist();
-    updateMasterSources();
-    updateMasterMethods();
 };
 
 const populateSettingsData = () => {
-    const inactiveOutputs = JSON.parse(localStorage.getItem('inactive_outputs')) || [];
-    const inactiveMethods = JSON.parse(localStorage.getItem('inactive_methods')) || [];
-    const inactiveSources = JSON.parse(localStorage.getItem('inactive_sources')) || [];
-
     if (masterOutputList) {
         masterOutputList.innerHTML = masterOutputs.map(o => {
             const isInactive = inactiveOutputs.includes(o);
