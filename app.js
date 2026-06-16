@@ -458,6 +458,7 @@ const updateUI = () => {
     renderTransactions();
     renderAssetSummary();
     renderHutangPiutang();
+    renderSumberDanaSummary();
 };
 
 // Calculate and update summary cards
@@ -648,6 +649,92 @@ const renderHutangPiutang = () => {
 
     renderList(hpData.hutang, hutangList, 'Anda tidak memiliki hutang berjalan.', 'HUTANG', 'Bayar', 'BAYAR HUTANG');
     renderList(hpData.piutang, piutangList, 'Tidak ada piutang yang sedang berjalan.', 'PIUTANG', 'Terima', 'TERIMA PIUTANG');
+};
+
+// Render Sumber Dana Summary
+const renderSumberDanaSummary = () => {
+    const container = document.getElementById('sumber-dana-cards-container');
+    if (!container) return;
+
+    // Group by fundSource
+    const summary = {};
+
+    // Ambil semua dari masterSources agar selalu terdaftar meskipun belum ada transaksi
+    masterSources.forEach(source => {
+        summary[source] = {
+            income: 0,
+            expense: 0,
+            balance: 0
+        };
+    });
+
+    transactions.filter(t => t.output !== '[PENGINGAT]').forEach(t => {
+        const source = t.fundSource || 'Lainnya';
+        if (!summary[source]) {
+            summary[source] = {
+                income: 0,
+                expense: 0,
+                balance: 0
+            };
+        }
+
+        if (t.type === 'income') {
+            summary[source].income += t.amount;
+            summary[source].balance += t.amount;
+        } else if (t.type === 'expense') {
+            summary[source].expense += t.amount;
+            summary[source].balance -= t.amount;
+        }
+    });
+
+    container.innerHTML = '';
+
+    if (Object.keys(summary).length === 0) {
+        container.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;"><i class='bx bx-coin-stack'></i><p>Belum ada data Sumber Dana.</p></div>`;
+        return;
+    }
+
+    // Sort keys alphabetically
+    const sortedSources = Object.keys(summary).sort();
+
+    sortedSources.forEach(source => {
+        const data = summary[source];
+        const percentSpent = data.income > 0 ? (data.expense / data.income) * 100 : 0;
+        const percentVal = Math.min(100, Math.round(percentSpent));
+        
+        let progressBarColor = 'var(--income-color)';
+        if (percentSpent > 80) progressBarColor = '#f59e0b'; // warning orange
+        if (percentSpent > 100) progressBarColor = 'var(--expense-color)'; // danger red
+
+        const card = document.createElement('div');
+        card.className = 'card asset-card';
+        card.innerHTML = `
+            <div class="asset-card-header">
+                <h3>${source}</h3>
+                <h2 class="${data.balance < 0 ? 'text-expense' : ''}">${formatCurrency(data.balance)}</h2>
+            </div>
+            <div class="asset-card-details">
+                <div class="asset-detail-item">
+                    <span class="text-muted"><i class='bx bx-trending-up'></i> Pemasukan</span>
+                    <span class="text-income">+${formatCurrency(data.income)}</span>
+                </div>
+                <div class="asset-detail-item">
+                    <span class="text-muted"><i class='bx bx-trending-down'></i> Pengeluaran</span>
+                    <span class="text-expense">-${formatCurrency(data.expense)}</span>
+                </div>
+                <div style="margin-top: 1rem; width: 100%;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+                        <span>Anggaran Terpakai</span>
+                        <span style="font-weight: 600; color: ${progressBarColor};">${Math.round(percentSpent)}%</span>
+                    </div>
+                    <div style="width: 100%; height: 8px; background: var(--scrollbar-track); border-radius: 4px; overflow: hidden; border: 1px solid var(--card-border);">
+                        <div style="width: ${percentVal}%; height: 100%; background: ${progressBarColor}; border-radius: 4px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
 };
 
 window.openHPModal = (hpType, contactName = '') => {
@@ -1954,6 +2041,7 @@ removeReceiptBtn.addEventListener('click', function () {
 const navItems = document.querySelectorAll('.nav-item');
 const assetSection = document.getElementById('asset-section');
 const hpSection = document.getElementById('hp-section');
+const sDanaSection = document.getElementById('sumber-dana-section');
 
 const switchTab = (tabId) => {
     if (summarySection) summarySection.style.display = 'none';
@@ -1961,6 +2049,7 @@ const switchTab = (tabId) => {
     if (txTableSection) txTableSection.style.display = 'none';
     if (assetSection) assetSection.style.display = 'none';
     if (hpSection) hpSection.style.display = 'none';
+    if (sDanaSection) sDanaSection.style.display = 'none';
     if (settingsSection) settingsSection.style.display = 'none';
     if (fabBtn) fabBtn.style.display = 'none';
 
@@ -1983,6 +2072,8 @@ const switchTab = (tabId) => {
         if (assetSection) assetSection.style.display = 'block';
     } else if (tabId === 'hutang-piutang') {
         if (hpSection) hpSection.style.display = 'block';
+    } else if (tabId === 'sumber-dana') {
+        if (sDanaSection) sDanaSection.style.display = 'block';
     }
 };
 
