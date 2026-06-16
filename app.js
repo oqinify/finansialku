@@ -787,11 +787,14 @@ const updateMasterDatalist = () => {
     const datalist = document.getElementById('master-outputs');
     if (!datalist) return;
 
+    const inactiveOutputs = JSON.parse(localStorage.getItem('inactive_outputs')) || [];
     datalist.innerHTML = '';
     masterOutputs.forEach(output => {
-        const option = document.createElement('option');
-        option.value = output;
-        datalist.appendChild(option);
+        if (!inactiveOutputs.includes(output)) {
+            const option = document.createElement('option');
+            option.value = output;
+            datalist.appendChild(option);
+        }
     });
 };
 
@@ -800,17 +803,20 @@ const updateMasterMethods = () => {
     const selectEl = document.getElementById('payment-method');
     if (!selectEl) return;
 
+    const inactiveMethods = JSON.parse(localStorage.getItem('inactive_methods')) || [];
     const currentValue = selectEl.value;
     selectEl.innerHTML = '<option value="" disabled selected>Pilih Metode Pembayaran...</option>';
 
     masterMethods.forEach(method => {
-        const option = document.createElement('option');
-        option.value = method;
-        option.textContent = method;
-        selectEl.appendChild(option);
+        if (!inactiveMethods.includes(method)) {
+            const option = document.createElement('option');
+            option.value = method;
+            option.textContent = method;
+            selectEl.appendChild(option);
+        }
     });
 
-    if (currentValue && masterMethods.includes(currentValue)) {
+    if (currentValue && masterMethods.includes(currentValue) && !inactiveMethods.includes(currentValue)) {
         selectEl.value = currentValue;
     }
 };
@@ -820,11 +826,14 @@ const updateMasterSources = () => {
     const datalist = document.getElementById('master-sources');
     if (!datalist) return;
 
+    const inactiveSources = JSON.parse(localStorage.getItem('inactive_sources')) || [];
     datalist.innerHTML = '';
     masterSources.forEach(source => {
-        const option = document.createElement('option');
-        option.value = source;
-        datalist.appendChild(option);
+        if (!inactiveSources.includes(source)) {
+            const option = document.createElement('option');
+            option.value = source;
+            datalist.appendChild(option);
+        }
     });
 };
 
@@ -2121,15 +2130,57 @@ const showDashboard = () => {
     }
 };
 
+window.toggleMasterItemActive = (type, value) => {
+    const key = `inactive_${type}s`;
+    let inactiveItems = JSON.parse(localStorage.getItem(key)) || [];
+    if (inactiveItems.includes(value)) {
+        inactiveItems = inactiveItems.filter(item => item !== value);
+        showToast(`${value} diaktifkan kembali`, 'success');
+    } else {
+        inactiveItems.push(value);
+        showToast(`${value} dinonaktifkan`, 'info');
+    }
+    localStorage.setItem(key, JSON.stringify(inactiveItems));
+    populateSettingsData();
+    updateMasterDatalist();
+    updateMasterSources();
+    updateMasterMethods();
+};
+
 const populateSettingsData = () => {
+    const inactiveOutputs = JSON.parse(localStorage.getItem('inactive_outputs')) || [];
+    const inactiveMethods = JSON.parse(localStorage.getItem('inactive_methods')) || [];
+    const inactiveSources = JSON.parse(localStorage.getItem('inactive_sources')) || [];
+
     if (masterOutputList) {
-        masterOutputList.innerHTML = masterOutputs.map(o => `<span class="master-badge">${o}</span>`).join('');
+        masterOutputList.innerHTML = masterOutputs.map(o => {
+            const isInactive = inactiveOutputs.includes(o);
+            return `
+                <span class="master-badge ${isInactive ? 'inactive' : ''}" onclick="toggleMasterItemActive('output', '${o}')" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; margin: 0.2rem; border-radius: 6px; font-size: 0.85rem; border: 1px solid var(--card-border); background: ${isInactive ? 'rgba(239, 68, 68, 0.15)' : 'var(--item-bg)'}; color: ${isInactive ? 'var(--expense-color)' : 'var(--text-main)'};">
+                    <i class='bx ${isInactive ? 'bx-low-vision' : 'bx-show'}'></i> ${o}
+                </span>
+            `;
+        }).join('');
     }
     if (masterMethodList) {
-        masterMethodList.innerHTML = masterMethods.map(m => `<span class="master-badge">${m}</span>`).join('');
+        masterMethodList.innerHTML = masterMethods.map(m => {
+            const isInactive = inactiveMethods.includes(m);
+            return `
+                <span class="master-badge ${isInactive ? 'inactive' : ''}" onclick="toggleMasterItemActive('method', '${m}')" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; margin: 0.2rem; border-radius: 6px; font-size: 0.85rem; border: 1px solid var(--card-border); background: ${isInactive ? 'rgba(239, 68, 68, 0.15)' : 'var(--item-bg)'}; color: ${isInactive ? 'var(--expense-color)' : 'var(--text-main)'};">
+                    <i class='bx ${isInactive ? 'bx-low-vision' : 'bx-show'}'></i> ${m}
+                </span>
+            `;
+        }).join('');
     }
     if (masterSourceList) {
-        masterSourceList.innerHTML = masterSources.map(s => `<span class="master-badge">${s}</span>`).join('');
+        masterSourceList.innerHTML = masterSources.map(s => {
+            const isInactive = inactiveSources.includes(s);
+            return `
+                <span class="master-badge ${isInactive ? 'inactive' : ''}" onclick="toggleMasterItemActive('source', '${s}')" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; margin: 0.2rem; border-radius: 6px; font-size: 0.85rem; border: 1px solid var(--card-border); background: ${isInactive ? 'rgba(239, 68, 68, 0.15)' : 'var(--item-bg)'}; color: ${isInactive ? 'var(--expense-color)' : 'var(--text-main)'};">
+                    <i class='bx ${isInactive ? 'bx-low-vision' : 'bx-show'}'></i> ${s}
+                </span>
+            `;
+        }).join('');
     }
 };
 
