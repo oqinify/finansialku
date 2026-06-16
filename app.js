@@ -2148,6 +2148,7 @@ const showSettings = () => {
     if (txTableSection) txTableSection.style.display = 'none';
     if (assetSection) assetSection.style.display = 'none';
     if (hpSection) hpSection.style.display = 'none';
+    if (sDanaSection) sDanaSection.style.display = 'none';
     if (fabBtn) fabBtn.style.display = 'none';
     if (settingsSection) settingsSection.style.display = 'block';
     populateSettingsData();
