@@ -553,8 +553,8 @@ const renderHutangPiutang = () => {
     if (!hutangList || !piutangList) return;
 
     const hpData = {
-        hutang: {}, // contact: { amount: 0, reminders: [] }
-        piutang: {} // contact: { amount: 0, reminders: [] }
+        hutang: {}, // contact: { amount: 0, reminders: [], sources: {} }
+        piutang: {} // contact: { amount: 0, reminders: [], sources: {} }
     };
 
     transactions.forEach(t => {
@@ -581,13 +581,28 @@ const renderHutangPiutang = () => {
             if (!contact || contact === '-') contact = 'Tanpa Nama';
 
             const target = (type === 'HUTANG' || type === 'BAYAR HUTANG') ? hpData.hutang : hpData.piutang;
-            if (!target[contact]) target[contact] = { amount: 0, reminders: [] };
+            if (!target[contact]) target[contact] = { amount: 0, reminders: [], sources: {} };
+
+            let targetKey = '';
+            if (type === 'PIUTANG' || type === 'TERIMA PIUTANG') {
+                targetKey = (t.description || 'Tanpa Keterangan').trim();
+            } else {
+                let targetSource = '';
+                if (type === 'HUTANG' || type === 'TERIMA PIUTANG') {
+                    targetSource = t.paymentMethod || 'Lainnya';
+                } else {
+                    targetSource = t.fundSource || 'Lainnya';
+                }
+                targetKey = targetSource;
+            }
 
             if (type === 'HUTANG' || type === 'PIUTANG') {
                 target[contact].amount += t.amount;
+                target[contact].sources[targetKey] = (target[contact].sources[targetKey] || 0) + t.amount;
                 if (t.reminder) target[contact].reminders.push(t.reminder);
             } else {
                 target[contact].amount -= t.amount;
+                target[contact].sources[targetKey] = (target[contact].sources[targetKey] || 0) - t.amount;
             }
         }
     });
@@ -597,7 +612,7 @@ const renderHutangPiutang = () => {
         let hasData = false;
 
         for (const [contact, info] of Object.entries(data)) {
-            const { amount, reminders } = info;
+            const { amount, reminders, sources } = info;
             if (amount <= 0) continue;
             hasData = true;
 
@@ -628,20 +643,62 @@ const renderHutangPiutang = () => {
                 reminderBadge = `<div style="font-size: 0.75rem; color: ${badgeColor}; font-weight: 600; margin-top: 0.25rem;"><i class='bx bx-alarm'></i> ${badgeText}</div>`;
             }
 
+            // Rincian Sumber Dana / Deskripsi
+            let sourcesDetail = '';
+            const activeSources = Object.entries(sources).filter(([_, amt]) => amt > 0);
+            if (activeSources.length > 0) {
+                const labelText = btnType === 'PIUTANG' ? 'Rincian Piutang (Keterangan):' : 'Rincian Sumber Dana:';
+                const sourcesListHtml = activeSources.map(([source, amt]) => {
+                    const buttonHtml = btnType === 'PIUTANG' ? `
+                        <button onclick="openHPModal('${actionPrefix}', '${contact}', '', '${source.replace(/'/g, "\\'")}')" style="background: var(--card-border); color: var(--text-main); font-weight: 600; border: none; cursor: pointer; font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 4px; width: auto; height: auto; margin-left: 0.5rem;">
+                            Terima
+                        </button>
+                    ` : '';
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); padding: 0.2rem 0;">
+                            <span>• ${source}</span>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-weight: 500;">${formatCurrency(amt)}</span>
+                                ${buttonHtml}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                sourcesDetail = `
+                    <div style="margin-top: 0.5rem; border-top: 1px dashed var(--card-border); padding-top: 0.4rem; width: 100%;">
+                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.25rem;">${labelText}</div>
+                        ${sourcesListHtml}
+                    </div>
+                `;
+            }
+
             const item = document.createElement('div');
             item.className = 'asset-detail-item';
             item.style.padding = '0.75rem';
             item.style.background = 'var(--bg-soft)';
             item.style.borderRadius = '8px';
-            item.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 0.1rem;">
-                    <span style="font-weight: 600; color: var(--text-main);">${contact}</span>
-                    <span class="${btnType === 'HUTANG' ? 'text-expense' : 'text-income'}" style="font-size: 1.1rem; font-weight: 700;">${formatCurrency(amount)}</span>
-                    ${reminderBadge}
-                </div>
+            item.style.display = 'flex';
+            item.style.flexDirection = 'column';
+            item.style.alignItems = 'stretch';
+            item.style.gap = '0.5rem';
+
+            const showHeaderBtn = btnType !== 'PIUTANG';
+            const headerBtnHtml = showHeaderBtn ? `
                 <button onclick="openHPModal('${actionPrefix}', '${contact}')" style="background: var(--card-border); color: var(--text-main); font-weight: 600; border: none; cursor: pointer; font-size: 0.8rem; padding: 0.4rem 0.75rem; border-radius: 6px; width: auto; height: auto;">
                     ${btnActionLabel}
                 </button>
+            ` : '';
+
+            item.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+                        <span style="font-weight: 600; color: var(--text-main);">${contact}</span>
+                        <span class="${btnType === 'HUTANG' ? 'text-expense' : 'text-income'}" style="font-size: 1.1rem; font-weight: 700;">${formatCurrency(amount)}</span>
+                    </div>
+                    ${headerBtnHtml}
+                </div>
+                ${reminderBadge}
+                ${sourcesDetail}
             `;
             container.appendChild(item);
         }
@@ -751,7 +808,7 @@ const renderSumberDanaSummary = () => {
         const data = summary[source];
         const percentSpent = data.income > 0 ? (data.expense / data.income) * 100 : 0;
         const percentVal = Math.min(100, Math.round(percentSpent));
-        
+
         let progressBarColor = 'var(--income-color)';
         if (percentSpent > 80) progressBarColor = '#f59e0b'; // warning orange
         if (percentSpent > 100) progressBarColor = 'var(--expense-color)'; // danger red
@@ -856,7 +913,7 @@ window.toggleCardHPDetails = (btn) => {
     }
 };
 
-window.openHPModal = (hpType, contactName = '') => {
+window.openHPModal = (hpType, contactName = '', sourceName = '', description = '') => {
     openModal();
 
     const isIncome = (hpType === 'HUTANG' || hpType === 'TERIMA PIUTANG');
@@ -876,18 +933,28 @@ window.openHPModal = (hpType, contactName = '') => {
 
     const fundSourceEl = document.getElementById('fund-source');
     const outputEl = document.getElementById('output');
+    const paymentMethodEl = document.getElementById('payment-method');
 
     if (isIncome) {
         // Pemasukan: Uang bersumber dari Hutang/Piutang
         if (fundSourceEl) fundSourceEl.value = prefix;
         if (outputEl) outputEl.value = hpType.includes('PIUTANG') ? '[PIUTANG]' : '[HUTANG]';
+        if (paymentMethodEl && sourceName) {
+            paymentMethodEl.value = sourceName;
+        }
     } else {
         // Pengeluaran: Uang ditujukan/outputnya untuk Hutang/Piutang
         if (outputEl) outputEl.value = prefix;
-        if (fundSourceEl) fundSourceEl.value = ''; // Biarkan user pilih sumber dana aslinya
+        if (fundSourceEl) {
+            if (sourceName) {
+                fundSourceEl.value = sourceName;
+            } else {
+                fundSourceEl.value = ''; // Biarkan user pilih sumber dana aslinya
+            }
+        }
     }
 
-    setSplitDescription('');
+    setSplitDescription(description);
 
     setTimeout(() => {
         const targetEl = isIncome ? fundSourceEl : outputEl;
@@ -1954,7 +2021,7 @@ const checkReminders = () => {
 if (notificationBtn) {
     notificationBtn.addEventListener('click', () => {
         openReminderModal();
-        
+
         // Cek izin notifikasi di latar belakang jika belum pernah diminta
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
@@ -2094,7 +2161,7 @@ const renderReminderList = () => {
     if (!reminderListContainer) return;
 
     const now = new Date();
-    
+
     // Gabungkan pengingat dari transaksi dan pengingat kustom
     const combinedReminders = [
         ...transactions.filter(t => t.reminder && t.reminder !== ""),
@@ -2111,7 +2178,7 @@ const renderReminderList = () => {
 
         // Jika sama-sama mendatang: urutkan dari yang paling dekat (ascending)
         if (!isPastA) return timeA - timeB;
-        
+
         // Jika sama-sama terlewat: urutkan dari yang paling baru (descending)
         return timeB - timeA;
     });
@@ -2152,10 +2219,10 @@ const renderReminderList = () => {
                 </div>
                 ` : ''}
                 <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
-                    ${isQuick ? 
-                        `<button class="btn-clear" onclick="deleteQuickReminder('${t.id}', this)" style="font-size: 0.75rem; color: var(--expense-color); text-decoration: underline; padding: 0;">Hapus Pengingat</button>` : 
-                        `<button class="btn-clear" onclick="closeReminderModal(); viewTransaction('${t.id}')" style="font-size: 0.75rem; color: var(--accent-primary); text-decoration: underline; padding: 0;">Lihat Transaksi</button>`
-                    }
+                    ${isQuick ?
+                `<button class="btn-clear" onclick="deleteQuickReminder('${t.id}', this)" style="font-size: 0.75rem; color: var(--expense-color); text-decoration: underline; padding: 0;">Hapus Pengingat</button>` :
+                `<button class="btn-clear" onclick="closeReminderModal(); viewTransaction('${t.id}')" style="font-size: 0.75rem; color: var(--accent-primary); text-decoration: underline; padding: 0;">Lihat Transaksi</button>`
+            }
                 </div>
             </div>
         `;
@@ -2283,12 +2350,12 @@ const showDashboard = () => {
 
 window.toggleMasterItemActive = async (type, value) => {
     showToast(`Memperbarui status ${value}...`, 'info');
-    
+
     // Cari nama aslinya di sheet (apakah bersih atau berawalan [NONAKTIF])
     const isCurrentlyInactive = (type === 'output' && inactiveOutputs.includes(value)) ||
-                                (type === 'method' && inactiveMethods.includes(value)) ||
-                                (type === 'source' && inactiveSources.includes(value));
-    
+        (type === 'method' && inactiveMethods.includes(value)) ||
+        (type === 'source' && inactiveSources.includes(value));
+
     const lookupValue = isCurrentlyInactive ? `[NONAKTIF] ${value}` : value;
 
     try {
